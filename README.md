@@ -2,11 +2,13 @@
 
 An ARC mod injector that runs as a saltynx plugin.
 
-Plugin goes in ```
+Plugin goes in
+```
 sdmc:/SaltySD/plugins/
 ```
 
-Mods go in ```
+Mods go in
+```
 sdmc:/SaltySD/mods/
 ```
 
