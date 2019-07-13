@@ -53,14 +53,14 @@ int load_mod(char* path, uint64_t offset, FILE* arc) {
     FILE* f = SaltySDCore_fopen(path, "rb");
     if(f) {
         // Set file pointers to start of file and offset respectively
-        fseek(f, 0, SEEK_SET);
-        fseek(arc, offset, SEEK_SET);
+        SaltySDCore_fseek(f, 0, SEEK_SET);
+        SaltySDCore_fseek(arc, offset, SEEK_SET);
 
         // Copy in up to 0x100 byte chunks
         uint64_t size;
         do {
-            size = fread(copy_buffer, 1, 0x100, f);
-            fwrite(copy_buffer, 1, size, arc);
+            size = SaltySDCore_fread(copy_buffer, 1, 0x100, f);
+            SaltySDCore_fwrite(copy_buffer, 1, size, arc);
         } while(size == 0x100);
 
         SaltySDCore_fclose(f);
@@ -85,30 +85,29 @@ int load_mods(char* path) {
         return 0;
     }
 
-    // Next three lines are needed for not crashing on opendir since it's not implemented through IPC yet
-    SaltySDCore_fclose(f_arc);
-    free(tmp);
-    return 0;
-
-    d = opendir(tmp);
+    d = SaltySDCore_opendir(tmp);
     if (d)
     {
         SaltySD_printf("SaltySD Mod Installer: Opened mod directory\n");
-        while ((dir = readdir(d)) != NULL)
+        while ((dir = SaltySDCore_readdir(d)) != NULL)
         {
+            char filename[256];
+            strcpy(filename, dir->d_name);
             char* dot = strrchr(dir->d_name, '.');
             if(dot) {
                 uint64_t offset = strtol(dir->d_name, dot, 16);
                 if(offset){
-                    SaltySD_printf("SaltySD Mod Installer: Found file '%s', offset = %x\n", dir->d_name, offset);
-                    snprintf(tmp, 0x80, "sdmc:/SaltySD/mods/%s%s", path, dir->d_name);
+                    SaltySD_printf("SaltySD Mod Installer: Found file '%s', offset = %x\n", filename, offset);
+                    snprintf(tmp, 0x80, "sdmc:/SaltySD/mods/%s%s", path, filename);
                     load_mod(tmp, offset, f_arc);
                 } else {
-                    SaltySD_printf("SaltySD Mod Installer: Found file '%s', offset not parsable\n", dir->d_name);
+                    SaltySD_printf("SaltySD Mod Installer: Found file '%s', offset not parsable\n", filename);
                 }
             }
         }
-        closedir(d);
+        SaltySDCore_closedir(d);
+    } else {
+        SaltySD_printf("SaltySD Mod Installer: Failed to open mod directory\n");
     }
 
     SaltySDCore_fclose(f_arc);
