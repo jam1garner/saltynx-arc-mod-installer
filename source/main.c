@@ -91,17 +91,15 @@ int load_mods(char* path) {
         SaltySD_printf("SaltySD Mod Installer: Opened mod directory\n");
         while ((dir = SaltySDCore_readdir(d)) != NULL)
         {
-            char filename[256];
-            strcpy(filename, dir->d_name);
             char* dot = strrchr(dir->d_name, '.');
             if(dot) {
-                uint64_t offset = strtol(dir->d_name, dot, 16);
+                uint64_t offset = strtol(dir->d_name, NULL, 16);
                 if(offset){
-                    SaltySD_printf("SaltySD Mod Installer: Found file '%s', offset = %x\n", filename, offset);
-                    snprintf(tmp, 0x80, "sdmc:/SaltySD/mods/%s%s", path, filename);
+                    SaltySD_printf("SaltySD Mod Installer: Found file '%s', offset = %x\n", dir->d_name, offset);
+                    snprintf(tmp, 0x80, "sdmc:/SaltySD/mods/%s%s", path, dir->d_name);
                     load_mod(tmp, offset, f_arc);
                 } else {
-                    SaltySD_printf("SaltySD Mod Installer: Found file '%s', offset not parsable\n", filename);
+                    SaltySD_printf("SaltySD Mod Installer: Found file '%s', offset not parsable\n", dir->d_name);
                 }
             }
         }
