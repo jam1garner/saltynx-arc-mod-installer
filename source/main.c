@@ -110,7 +110,7 @@ int load_mods(char* path) {
         {
             char* dot = strrchr(dir->d_name, '.');
             if(dot) {
-                long int offset = strtol(dir->d_name, NULL, 16);
+                uint64_t offset = strtoull(dir->d_name, NULL, 16);
                 if(offset){
                     SaltySD_printf("SaltySD Mod Installer: Found file '%s', offset = %ld\n", dir->d_name, offset);
                     snprintf(tmp, 0x80, "sdmc:/SaltySD/mods/%s%s", path, dir->d_name);
