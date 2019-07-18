@@ -59,10 +59,10 @@ int load_mod(char* path, uint64_t offset, FILE* arc) {
 
         ret = SaltySDCore_fseek(arc, offset, SEEK_SET);
         if (ret)
-            SaltySD_printf("SaltySD Mod Installer: Failed to seek offset %ld from start of data.arc with errno %d\n", offset, ret);
+            SaltySD_printf("SaltySD Mod Installer: Failed to seek offset %llx from start of data.arc with errno %d\n", offset, ret);
 
         uint64_t offset_sought = SaltySDCore_ftell(arc);
-        SaltySD_printf("SaltySD Mod Installer: Current data.arc seek offset: %ld\n", offset_sought);        
+        SaltySD_printf("SaltySD Mod Installer: Current data.arc seek offset: %llx\n", offset_sought);
 
         uint64_t total_size = 0;
 
@@ -77,7 +77,7 @@ int load_mod(char* path, uint64_t offset, FILE* arc) {
 
         SaltySD_printf("SaltySD Mod Installer: Installed file '%s' with 0x%llx bytes\n", path, total_size);
         offset_sought = SaltySDCore_ftell(arc);
-        SaltySD_printf("SaltySD Mod Installer: Current data.arc seek offset: %ld\n", offset_sought);        
+        SaltySD_printf("SaltySD Mod Installer: Current data.arc seek offset: %ld\n", offset_sought);
 
         SaltySDCore_fclose(f);
     } else {
