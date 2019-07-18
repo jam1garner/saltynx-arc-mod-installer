@@ -48,25 +48,42 @@ void __attribute__((weak)) NORETURN __libnx_exit(int rc) {
 	while (true);
 }
 
-int load_mod(char* path, uint64_t offset, FILE* arc) {
+int load_mod(char* path, long int offset, FILE* arc) {
     void* copy_buffer = malloc(0x100);
     FILE* f = SaltySDCore_fopen(path, "rb");
     if(f) {
         // Set file pointers to start of file and offset respectively
-        SaltySDCore_fseek(f, 0, SEEK_SET);
-        SaltySDCore_fseek(arc, offset, SEEK_SET);
+        int ret = SaltySDCore_fseek(f, 0, SEEK_SET);
+        if (ret)
+            SaltySD_printf("SaltySD Mod Installer: Failed to seek file with errno %d\n", ret);
+
+        ret = SaltySDCore_fseek(arc, 2371845688, SEEK_SET);
+        if (ret)
+            SaltySD_printf("SaltySD Mod Installer: Failed to seek offset %ld from start of data.arc with errno %d\n", offset, ret);
+
+        long int offset_sought = SaltySDCore_ftell(arc);
+        SaltySD_printf("SaltySD Mod Installer: Current data.arc seek offset: %ld\n", offset_sought);        
+
+        uint64_t total_size = 0;
 
         // Copy in up to 0x100 byte chunks
-        uint64_t size;
+        size_t size;
         do {
             size = SaltySDCore_fread(copy_buffer, 1, 0x100, f);
-            SaltySDCore_fwrite(copy_buffer, 1, size, arc);
+            total_size += size;
+
+            size_t bytes_written = SaltySDCore_fwrite(copy_buffer, 1, size, arc);
         } while(size == 0x100);
+
+        SaltySD_printf("SaltySD Mod Installer: Installed file '%s' with 0x%llx bytes\n", path, total_size);
+        offset_sought = SaltySDCore_ftell(arc);
+        SaltySD_printf("SaltySD Mod Installer: Current data.arc seek offset: %ld\n", offset_sought);        
 
         SaltySDCore_fclose(f);
     } else {
         SaltySD_printf("SaltySD Mod Installer: Found file '%s', failed to get file handle\n", path, offset);
     }
+    free(copy_buffer);
 }
 
 int load_mods(char* path) {
@@ -93,9 +110,9 @@ int load_mods(char* path) {
         {
             char* dot = strrchr(dir->d_name, '.');
             if(dot) {
-                uint64_t offset = strtol(dir->d_name, NULL, 16);
+                long int offset = strtol(dir->d_name, NULL, 16);
                 if(offset){
-                    SaltySD_printf("SaltySD Mod Installer: Found file '%s', offset = %x\n", dir->d_name, offset);
+                    SaltySD_printf("SaltySD Mod Installer: Found file '%s', offset = %ld\n", dir->d_name, offset);
                     snprintf(tmp, 0x80, "sdmc:/SaltySD/mods/%s%s", path, dir->d_name);
                     load_mod(tmp, offset, f_arc);
                 } else {

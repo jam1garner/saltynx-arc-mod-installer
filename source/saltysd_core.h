@@ -17,6 +17,7 @@ extern FILE* SaltySDCore_fopen(const char* filename, const char* mode) LINKABLE;
 extern size_t SaltySDCore_fread(void* ptr, size_t size, size_t count, FILE* stream) LINKABLE;
 extern int SaltySDCore_fclose(FILE* stream) LINKABLE;
 extern int SaltySDCore_fseek(FILE* stream, long int offset, int origin) LINKABLE;
+extern long int SaltySDCore_ftell(FILE* stream) LINKABLE;
 extern size_t SaltySDCore_fwrite(const void* ptr, size_t size, size_t count, FILE* stream) LINKABLE;
 extern DIR* SaltySDCore_opendir(const char* dirname) LINKABLE;
 extern struct dirent* SaltySDCore_readdir(DIR* dirp) LINKABLE;
