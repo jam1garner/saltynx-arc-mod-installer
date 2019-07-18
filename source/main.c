@@ -86,6 +86,39 @@ int load_mod(char* path, uint64_t offset, FILE* arc) {
     free(copy_buffer);
 }
 
+#define UC(c) ((unsigned char)c)
+
+char _isxdigit (unsigned char c)
+{
+    if (( c >= UC('0') && c <= UC('9') ) ||
+        ( c >= UC('a') && c <= UC('f') ) ||
+        ( c >= UC('A') && c <= UC('F') ))
+        return 1;
+    return 0;
+}
+
+unsigned char xtoc(char x) {
+    if (x >= UC('0') && x <= UC('9'))
+        return x - UC('0');
+    else if (x >= UC('a') && x <= UC('f'))
+        return (x - UC('a')) + 0xa;
+    else if (x >= UC('A') && x <= UC('F'))
+        return (x - UC('A')) + 0xA;
+    return -1;
+}
+
+uint64_t hex_to_u64(char* str) {
+    if(str[0] == '0' && str[1] == 'x')
+        str += 2;
+    uint64_t value = 0;
+    while(_isxdigit(*str)) {
+        value *= 0x10;
+        value += xtoc(*str);
+        str++;
+    }
+    return value;
+}
+
 int load_mods(char* path) {
     char* tmp = malloc(0x80);
     DIR *d;
@@ -110,7 +143,7 @@ int load_mods(char* path) {
         {
             char* dot = strrchr(dir->d_name, '.');
             if(dot) {
-                uint64_t offset = strtoull(dir->d_name, NULL, 16);
+                uint64_t offset = hex_to_u64(dir->d_name);
                 if(offset){
                     SaltySD_printf("SaltySD Mod Installer: Found file '%s', offset = %ld\n", dir->d_name, offset);
                     snprintf(tmp, 0x80, "sdmc:/SaltySD/mods/%s%s", path, dir->d_name);
