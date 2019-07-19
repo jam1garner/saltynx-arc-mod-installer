@@ -48,24 +48,6 @@ void __attribute__((weak)) NORETURN __libnx_exit(int rc) {
 	while (true);
 }
 
-uint64_t install_file(FILE* to, FILE* from) {
-    void* copy_buffer = malloc(0x100);
-    uint64_t total_size = 0;
-
-    // Copy in up to 0x100 byte chunks
-    size_t size;
-    do {
-        size = SaltySDCore_fread(copy_buffer, 1, 0x100, from);
-        total_size += size;
-
-        SaltySDCore_fwrite(copy_buffer, 1, size, to);
-    } while(size == 0x100);
-
-    free(copy_buffer);
-
-    return total_size;
-}
-
 int seek_files(FILE* f, uint64_t offset, FILE* arc) {
     // Set file pointers to start of file and offset respectively
     int ret = SaltySDCore_fseek(f, 0, SEEK_SET);
@@ -88,7 +70,19 @@ int load_mod(char* path, uint64_t offset, FILE* arc) {
     if(f) {
         int ret = seek_files(f, offset, arc);
         if (!ret) {
-            uint64_t total_size = install_file(arc, f);
+            void* copy_buffer = malloc(0x100);
+            uint64_t total_size = 0;
+
+            // Copy in up to 0x100 byte chunks
+            size_t size;
+            do {
+                size = SaltySDCore_fread(copy_buffer, 1, 0x100, f);
+                total_size += size;
+
+                SaltySDCore_fwrite(copy_buffer, 1, size, arc);
+            } while(size == 0x100);
+
+            free(copy_buffer);
             SaltySD_printf("SaltySD Mod Installer: Installed file '%s' with 0x%llx bytes\n", path, total_size);
         }
 
@@ -101,20 +95,55 @@ int load_mod(char* path, uint64_t offset, FILE* arc) {
     return 0;
 }
 
-int create_backup(char* path, uint64_t offset, FILE* arc) {
-    FILE* f = SaltySDCore_fopen(path, "wb");
-    if(f) {
-        int ret = seek_files(f, offset, arc);
+int create_backup(char* filename, uint64_t offset, FILE* arc) {
+    const int filename_size = 0x120;
+    char* backup_path = malloc(filename_size);
+    char* mod_path = malloc(filename_size);
+    snprintf(backup_path, filename_size, "sdmc:/SaltySD/backups/%s", filename);
+    snprintf(mod_path, filename_size, "sdmc:/SaltySD/mods/%s", filename);
+
+    FILE* backup = SaltySDCore_fopen(backup_path, "wb");
+    FILE* mod = SaltySDCore_fopen(mod_path, "rb");
+    if(backup && mod) {
+        SaltySDCore_fseek(mod, 0, SEEK_END);
+        size_t filesize = SaltySDCore_ftell(mod);
+        int ret = seek_files(backup, offset, arc);
         if (!ret) {
-            uint64_t total_size = install_file(f, arc);
-            SaltySD_printf("SaltySD Mod Installer: Created backup '%s' with 0x%llx bytes\n", path, total_size);
+            void* copy_buffer = malloc(0x100);
+            uint64_t total_size = 0;
+
+            // Copy in up to 0x100 byte chunks
+            size_t size;
+            do {
+                size_t to_read = 0x100;
+                if (filesize < 0x100)
+                    to_read = filesize;
+                size = SaltySDCore_fread(copy_buffer, 1, to_read, arc);
+                total_size += size;
+                filesize -= size;
+
+                SaltySDCore_fwrite(copy_buffer, 1, size, backup);
+            } while(size == 0x100);
+
+            free(copy_buffer);
+            SaltySD_printf("SaltySD Mod Installer: Created backup '%s' with 0x%llx bytes\n", backup_path, total_size);
         }
 
-        SaltySDCore_fclose(f);
+        SaltySDCore_fclose(backup);
+        SaltySDCore_fclose(mod);
     } else {
-        SaltySD_printf("SaltySD Mod Installer: Attempted to create backup file '%s', failed to get file handle\n", path, offset);
-        return -1;
+        if (backup)
+            SaltySDCore_fclose(backup);
+        else
+            SaltySD_printf("SaltySD Mod Installer: Attempted to create backup file '%s', failed to get backup file handle\n", backup_path, offset);
+        if (mod)
+            SaltySDCore_fclose(mod);
+        else 
+            SaltySD_printf("SaltySD Mod Installer: Attempted to create backup file '%s', failed to get mod file handle\n", backup_path, offset);
     }
+
+    free(backup_path);
+    free(mod_path);
 
     return 0;
 }
@@ -165,7 +194,7 @@ int load_mods(FILE* f_arc, char* mod_dir) {
     d = SaltySDCore_opendir(tmp);
     if (d)
     {
-        SaltySD_printf("SaltySD Mod Installer: Opened mod directory\n");
+        SaltySD_printf("SaltySD Mod Installer: Opened %s directory\n", mod_dir);
         while ((dir = SaltySDCore_readdir(d)) != NULL)
         {
             char* dot = strrchr(dir->d_name, '.');
@@ -178,9 +207,9 @@ int load_mods(FILE* f_arc, char* mod_dir) {
                         load_mod(tmp, offset, f_arc);
 
                         SaltySDCore_remove(tmp);
+                        SaltySD_printf("SaltySD Mod Installer: Installed backup '%s' into arc and deleted it\n", tmp);
                     } else {
-                        snprintf(tmp, filename_size, "sdmc:/SaltySD/backups/%s", dir->d_name);
-                        create_backup(tmp, offset, f_arc);
+                        create_backup(dir->d_name, offset, f_arc);
 
                         snprintf(tmp, filename_size, "sdmc:/SaltySD/mods/%s", dir->d_name);
                         load_mod(tmp, offset, f_arc);
