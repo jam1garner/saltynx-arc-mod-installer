@@ -48,6 +48,27 @@ void __attribute__((weak)) NORETURN __libnx_exit(int rc) {
 	while (true);
 }
 
+#define FILENAME_SIZE 0x120
+#define FILE_READ_SIZE 0x5000
+
+void current_time(int* hours, int* minutes, int* seconds) {
+	// time_t is arithmetic time type
+	time_t now;
+	
+	// Obtain current time
+	// time() returns the current time of the system as a time_t value
+	time(&now);
+
+	// localtime converts a time_t value to calendar time and 
+	// returns a pointer to a tm structure with its members 
+	// filled with the corresponding values
+	struct tm *local = localtime(&now);
+
+    *hours = local->tm_hour;      	// get hours since midnight (0-23)
+    *minutes = local->tm_min;     	// get minutes passed after the hour (0-59)
+    *seconds = local->tm_sec;     	// get seconds passed after minute (0-59)
+}
+
 int seek_files(FILE* f, uint64_t offset, FILE* arc) {
     // Set file pointers to start of file and offset respectively
     int ret = SaltySDCore_fseek(f, 0, SEEK_SET);
@@ -70,17 +91,17 @@ int load_mod(char* path, uint64_t offset, FILE* arc) {
     if(f) {
         int ret = seek_files(f, offset, arc);
         if (!ret) {
-            void* copy_buffer = malloc(0x100);
+            void* copy_buffer = malloc(FILE_READ_SIZE);
             uint64_t total_size = 0;
 
-            // Copy in up to 0x100 byte chunks
+            // Copy in up to FILE_READ_SIZE byte chunks
             size_t size;
             do {
-                size = SaltySDCore_fread(copy_buffer, 1, 0x100, f);
+                size = SaltySDCore_fread(copy_buffer, 1, FILE_READ_SIZE, f);
                 total_size += size;
 
                 SaltySDCore_fwrite(copy_buffer, 1, size, arc);
-            } while(size == 0x100);
+            } while(size == FILE_READ_SIZE);
 
             free(copy_buffer);
             SaltySD_printf("SaltySD Mod Installer: Installed file '%s' with 0x%llx bytes\n", path, total_size);
@@ -96,11 +117,10 @@ int load_mod(char* path, uint64_t offset, FILE* arc) {
 }
 
 int create_backup(char* filename, uint64_t offset, FILE* arc) {
-    const int filename_size = 0x120;
-    char* backup_path = malloc(filename_size);
-    char* mod_path = malloc(filename_size);
-    snprintf(backup_path, filename_size, "sdmc:/SaltySD/backups/%s", filename);
-    snprintf(mod_path, filename_size, "sdmc:/SaltySD/mods/%s", filename);
+    char* backup_path = malloc(FILENAME_SIZE);
+    char* mod_path = malloc(FILENAME_SIZE);
+    snprintf(backup_path, FILENAME_SIZE, "sdmc:/SaltySD/backups/%s", filename);
+    snprintf(mod_path, FILENAME_SIZE, "sdmc:/SaltySD/mods/%s", filename);
 
     FILE* backup = SaltySDCore_fopen(backup_path, "wb");
     FILE* mod = SaltySDCore_fopen(mod_path, "rb");
@@ -109,21 +129,21 @@ int create_backup(char* filename, uint64_t offset, FILE* arc) {
         size_t filesize = SaltySDCore_ftell(mod);
         int ret = seek_files(backup, offset, arc);
         if (!ret) {
-            void* copy_buffer = malloc(0x100);
+            void* copy_buffer = malloc(FILE_READ_SIZE);
             uint64_t total_size = 0;
 
-            // Copy in up to 0x100 byte chunks
+            // Copy in up to FILE_READ_SIZE byte chunks
             size_t size;
             do {
-                size_t to_read = 0x100;
-                if (filesize < 0x100)
+                size_t to_read = FILE_READ_SIZE;
+                if (filesize < FILE_READ_SIZE)
                     to_read = filesize;
                 size = SaltySDCore_fread(copy_buffer, 1, to_read, arc);
                 total_size += size;
                 filesize -= size;
 
                 SaltySDCore_fwrite(copy_buffer, 1, size, backup);
-            } while(size == 0x100);
+            } while(size == FILE_READ_SIZE);
 
             free(copy_buffer);
             SaltySD_printf("SaltySD Mod Installer: Created backup '%s' with 0x%llx bytes\n", backup_path, total_size);
@@ -182,14 +202,14 @@ uint64_t hex_to_u64(char* str) {
 }
 
 int load_mods(FILE* f_arc, char* mod_dir) {
-    const int filename_size = 0x120;
-    char* tmp = malloc(filename_size);
+    char* tmp = malloc(FILENAME_SIZE);
     DIR *d;
     struct dirent *dir;
 
     SaltySD_printf("SaltySD Mod Installer: Searching mod dir '%s'...\n", mod_dir);
     
-    snprintf(tmp, filename_size, "sdmc:/SaltySD/%s/", mod_dir);
+    snprintf(tmp, FILENAME_SIZE, "sdmc:/SaltySD/%s/", mod_dir);
+    int hours, minutes, seconds;
 
     d = SaltySDCore_opendir(tmp);
     if (d)
@@ -203,16 +223,23 @@ int load_mods(FILE* f_arc, char* mod_dir) {
                 if(offset){
                     SaltySD_printf("SaltySD Mod Installer: Found file '%s', offset = %ld\n", dir->d_name, offset);
                     if (strcmp(mod_dir, "backups") == 0) {
-                        snprintf(tmp, filename_size, "sdmc:/SaltySD/backups/%s", dir->d_name);
+                        current_time(&hours, &minutes, &seconds);
+                        SaltySD_printf("[%02d:%02d:%02d] SaltySD Mod Installer: About to install backup '%s'\n", hours, minutes, seconds, tmp);
+                        snprintf(tmp, FILENAME_SIZE, "sdmc:/SaltySD/backups/%s", dir->d_name);
                         load_mod(tmp, offset, f_arc);
 
                         SaltySDCore_remove(tmp);
-                        SaltySD_printf("SaltySD Mod Installer: Installed backup '%s' into arc and deleted it\n", tmp);
+                        current_time(&hours, &minutes, &seconds);
+                        SaltySD_printf("[%02d:%02d:%02d] SaltySD Mod Installer: Installed backup '%s' into arc and deleted it\n", hours, minutes, seconds, tmp);
                     } else {
+                        current_time(&hours, &minutes, &seconds);
+                        SaltySD_printf("[%02d:%02d:%02d] SaltySD Mod Installer: About to create backup '%s'\n", hours, minutes, seconds, dir->d_name);
                         create_backup(dir->d_name, offset, f_arc);
 
-                        snprintf(tmp, filename_size, "sdmc:/SaltySD/mods/%s", dir->d_name);
+                        snprintf(tmp, FILENAME_SIZE, "sdmc:/SaltySD/mods/%s", dir->d_name);
                         load_mod(tmp, offset, f_arc);
+                        current_time(&hours, &minutes, &seconds);
+                        SaltySD_printf("[%02d:%02d:%02d] SaltySD Mod Installer: Installed mod '%s' into arc\n", hours, minutes, seconds, tmp);
                     }
                 } else {
                     SaltySD_printf("SaltySD Mod Installer: Found file '%s', offset not parsable\n", dir->d_name);
