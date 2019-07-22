@@ -119,7 +119,7 @@ int load_mod(char* path, uint64_t offset, FILE* arc) {
 int create_backup(char* filename, uint64_t offset, FILE* arc) {
     char* backup_path = malloc(FILENAME_SIZE);
     char* mod_path = malloc(FILENAME_SIZE);
-    snprintf(backup_path, FILENAME_SIZE, "sdmc:/SaltySD/backups/%s", filename);
+    snprintf(backup_path, FILENAME_SIZE, "sdmc:/SaltySD/backups/0x%llx.backup", offset);
     snprintf(mod_path, FILENAME_SIZE, "sdmc:/SaltySD/mods/%s", filename);
 
     FILE* backup = SaltySDCore_fopen(backup_path, "wb");
@@ -244,6 +244,10 @@ int load_mods(FILE* f_arc, char* mod_dir) {
                 } else {
                     SaltySD_printf("SaltySD Mod Installer: Found file '%s', offset not parsable\n", dir->d_name);
                 }
+            } else {
+                // TODO: use stat() to check if dir rather than by file path
+                snprintf(tmp, FILENAME_SIZE, "%s/%s", mod_dir, dir->d_name);
+                load_mods(f_arc, tmp);
             }
         }
         SaltySDCore_closedir(d);
