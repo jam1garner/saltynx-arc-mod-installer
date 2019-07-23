@@ -116,11 +116,11 @@ int load_mod(char* path, uint64_t offset, FILE* arc) {
     return 0;
 }
 
-int create_backup(char* filename, uint64_t offset, FILE* arc) {
+int create_backup(char* mod_dir, char* filename, uint64_t offset, FILE* arc) {
     char* backup_path = malloc(FILENAME_SIZE);
     char* mod_path = malloc(FILENAME_SIZE);
     snprintf(backup_path, FILENAME_SIZE, "sdmc:/SaltySD/backups/0x%llx.backup", offset);
-    snprintf(mod_path, FILENAME_SIZE, "sdmc:/SaltySD/mods/%s", filename);
+    snprintf(mod_path, FILENAME_SIZE, "sdmc:/SaltySD/mods/%s/%s", mod_dir, filename);
 
     FILE* backup = SaltySDCore_fopen(backup_path, "wb");
     FILE* mod = SaltySDCore_fopen(mod_path, "rb");
@@ -234,9 +234,10 @@ int load_mods(FILE* f_arc, char* mod_dir) {
                     } else {
                         current_time(&hours, &minutes, &seconds);
                         SaltySD_printf("[%02d:%02d:%02d] SaltySD Mod Installer: About to create backup '%s'\n", hours, minutes, seconds, dir->d_name);
-                        create_backup(dir->d_name, offset, f_arc);
+                        create_backup(mod_dir, dir->d_name, offset, f_arc);
 
-                        snprintf(tmp, FILENAME_SIZE, "sdmc:/SaltySD/mods/%s", dir->d_name);
+                        snprintf(tmp, FILENAME_SIZE, "sdmc:/SaltySD/%s/%s", mod_dir, dir->d_name);
+                        SaltySD_printf("[%02d:%02d:%02d] SaltySD Mod Installer: About to install mod '%s/%s'\n", hours, minutes, seconds, mod_dir, dir->d_name);
                         load_mod(tmp, offset, f_arc);
                         current_time(&hours, &minutes, &seconds);
                         SaltySD_printf("[%02d:%02d:%02d] SaltySD Mod Installer: Installed mod '%s' into arc\n", hours, minutes, seconds, tmp);
