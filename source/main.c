@@ -4,6 +4,7 @@
 #include <switch_min.h>
 #include <dirent.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 extern u32 __start__;
 
@@ -52,34 +53,26 @@ void __attribute__((weak)) NORETURN __libnx_exit(int rc) {
 #define FILE_READ_SIZE 0x5000
 
 void current_time(int* hours, int* minutes, int* seconds) {
-	// time_t is arithmetic time type
 	time_t now;
-	
-	// Obtain current time
-	// time() returns the current time of the system as a time_t value
 	time(&now);
 
-	// localtime converts a time_t value to calendar time and 
-	// returns a pointer to a tm structure with its members 
-	// filled with the corresponding values
 	struct tm *local = localtime(&now);
-
-    *hours = local->tm_hour;      	// get hours since midnight (0-23)
-    *minutes = local->tm_min;     	// get minutes passed after the hour (0-59)
-    *seconds = local->tm_sec;     	// get seconds passed after minute (0-59)
+    *hours = local->tm_hour;
+    *minutes = local->tm_min;
+    *seconds = local->tm_sec;
 }
 
 int seek_files(FILE* f, uint64_t offset, FILE* arc) {
     // Set file pointers to start of file and offset respectively
     int ret = SaltySDCore_fseek(f, 0, SEEK_SET);
     if (ret) {
-        SaltySD_printf("SaltySD Mod Installer: Failed to seek file with errno %d\n", ret);
+        SaltySD_printf("Failed to seek file with errno %d\n", ret);
         return ret;
     }
 
     ret = SaltySDCore_fseek(arc, offset, SEEK_SET);
     if (ret) {
-        SaltySD_printf("SaltySD Mod Installer: Failed to seek offset %llx from start of data.arc with errno %d\n", offset, ret);
+        SaltySD_printf("Failed to seek offset %llx from start of data.arc with errno %d\n", offset, ret);
         return ret;
     }
 
@@ -104,12 +97,12 @@ int load_mod(char* path, uint64_t offset, FILE* arc) {
             } while(size == FILE_READ_SIZE);
 
             free(copy_buffer);
-            SaltySD_printf("SaltySD Mod Installer: Installed file '%s' with 0x%llx bytes\n", path, total_size);
+            SaltySD_printf("Installed file '%s' with 0x%llx bytes\n", path, total_size);
         }
 
         SaltySDCore_fclose(f);
     } else {
-        SaltySD_printf("SaltySD Mod Installer: Found file '%s', failed to get file handle\n", path, offset);
+        SaltySD_printf("Found file '%s', failed to get file handle\n", path, offset);
         return -1;
     }
 
@@ -119,8 +112,8 @@ int load_mod(char* path, uint64_t offset, FILE* arc) {
 int create_backup(char* mod_dir, char* filename, uint64_t offset, FILE* arc) {
     char* backup_path = malloc(FILENAME_SIZE);
     char* mod_path = malloc(FILENAME_SIZE);
-    snprintf(backup_path, FILENAME_SIZE, "sdmc:/SaltySD/backups/0x%llx.backup", offset);
-    snprintf(mod_path, FILENAME_SIZE, "sdmc:/SaltySD/mods/%s/%s", mod_dir, filename);
+    snprintf(backup_path, FILENAME_SIZE, "sdmc:/SaltySD/backups/0x%lx.backup", offset);
+    snprintf(mod_path, FILENAME_SIZE, "sdmc:/SaltySD/%s/%s", mod_dir, filename);
 
     FILE* backup = SaltySDCore_fopen(backup_path, "wb");
     FILE* mod = SaltySDCore_fopen(mod_path, "rb");
@@ -146,20 +139,17 @@ int create_backup(char* mod_dir, char* filename, uint64_t offset, FILE* arc) {
             } while(size == FILE_READ_SIZE);
 
             free(copy_buffer);
-            SaltySD_printf("SaltySD Mod Installer: Created backup '%s' with 0x%llx bytes\n", backup_path, total_size);
+            SaltySD_printf("Created backup '%s' with 0x%llx bytes\n", backup_path, total_size);
         }
 
         SaltySDCore_fclose(backup);
         SaltySDCore_fclose(mod);
     } else {
-        if (backup)
-            SaltySDCore_fclose(backup);
-        else
-            SaltySD_printf("SaltySD Mod Installer: Attempted to create backup file '%s', failed to get backup file handle\n", backup_path, offset);
-        if (mod)
-            SaltySDCore_fclose(mod);
-        else 
-            SaltySD_printf("SaltySD Mod Installer: Attempted to create backup file '%s', failed to get mod file handle\n", backup_path, offset);
+        if (backup) SaltySDCore_fclose(backup);
+        else SaltySD_printf("Attempted to create backup file '%s', failed to get backup file handle\n", backup_path, offset);
+
+        if (mod) SaltySDCore_fclose(mod);
+        else SaltySD_printf("Attempted to create backup file '%s', failed to get mod file handle '%s'\n", backup_path, offset, mod_path);
     }
 
     free(backup_path);
@@ -201,80 +191,110 @@ uint64_t hex_to_u64(char* str) {
     return value;
 }
 
-int load_mods(FILE* f_arc, char* mod_dir) {
+char** mod_dirs = NULL;
+size_t num_mod_dirs = 0;
+
+void add_mod_dir(char* path) {
+    mod_dirs = realloc(mod_dirs, ++num_mod_dirs * sizeof(const char*));
+    mod_dirs[num_mod_dirs-1] = malloc(FILENAME_SIZE * sizeof(char));
+    strcpy(mod_dirs[num_mod_dirs-1], path);
+}
+
+void remove_last_mod_dir() {
+    free(mod_dirs[num_mod_dirs-1]);
+    num_mod_dirs--;
+}
+
+int load_mods(FILE* f_arc) {
+    char* mod_dir = malloc(FILENAME_SIZE);
+    strcpy(mod_dir, mod_dirs[num_mod_dirs-1]);
+
+    remove_last_mod_dir();
+
     char* tmp = malloc(FILENAME_SIZE);
     DIR *d;
     struct dirent *dir;
+    int hours, minutes, seconds;
 
-    SaltySD_printf("SaltySD Mod Installer: Searching mod dir '%s'...\n", mod_dir);
+    SaltySD_printf("Searching mod dir '%s'...\n", mod_dir);
     
     snprintf(tmp, FILENAME_SIZE, "sdmc:/SaltySD/%s/", mod_dir);
-    int hours, minutes, seconds;
 
     d = SaltySDCore_opendir(tmp);
     if (d)
     {
-        SaltySD_printf("SaltySD Mod Installer: Opened %s directory\n", mod_dir);
         while ((dir = SaltySDCore_readdir(d)) != NULL)
         {
-            char* dot = strrchr(dir->d_name, '.');
-            if(dot) {
+            if(dir->d_type == DT_DIR) {
+                if (strcmp(dir->d_name, ".") == 0 || strcmp(dir->d_name, "..") == 0)
+                    continue;
+                snprintf(tmp, FILENAME_SIZE, "%s/%s", mod_dir, dir->d_name);
+                add_mod_dir(tmp);
+            } else {
                 uint64_t offset = hex_to_u64(dir->d_name);
                 if(offset){
-                    SaltySD_printf("SaltySD Mod Installer: Found file '%s', offset = %ld\n", dir->d_name, offset);
+                    SaltySD_printf("Found file '%s', offset = %ld\n", dir->d_name, offset);
                     if (strcmp(mod_dir, "backups") == 0) {
                         current_time(&hours, &minutes, &seconds);
-                        SaltySD_printf("[%02d:%02d:%02d] SaltySD Mod Installer: About to install backup '%s'\n", hours, minutes, seconds, tmp);
+                        SaltySD_printf("[%02d:%02d:%02d] About to install backup '%s'\n", hours, minutes, seconds, tmp);
                         snprintf(tmp, FILENAME_SIZE, "sdmc:/SaltySD/backups/%s", dir->d_name);
                         load_mod(tmp, offset, f_arc);
 
                         SaltySDCore_remove(tmp);
                         current_time(&hours, &minutes, &seconds);
-                        SaltySD_printf("[%02d:%02d:%02d] SaltySD Mod Installer: Installed backup '%s' into arc and deleted it\n", hours, minutes, seconds, tmp);
+                        SaltySD_printf("[%02d:%02d:%02d] Installed backup '%s' into arc and deleted it\n", hours, minutes, seconds, tmp);
                     } else {
                         current_time(&hours, &minutes, &seconds);
-                        SaltySD_printf("[%02d:%02d:%02d] SaltySD Mod Installer: About to create backup '%s'\n", hours, minutes, seconds, dir->d_name);
+                        SaltySD_printf("[%02d:%02d:%02d] About to create backup '%s'\n", hours, minutes, seconds, dir->d_name);
                         create_backup(mod_dir, dir->d_name, offset, f_arc);
 
                         snprintf(tmp, FILENAME_SIZE, "sdmc:/SaltySD/%s/%s", mod_dir, dir->d_name);
-                        SaltySD_printf("[%02d:%02d:%02d] SaltySD Mod Installer: About to install mod '%s/%s'\n", hours, minutes, seconds, mod_dir, dir->d_name);
+                        SaltySD_printf("[%02d:%02d:%02d] About to install mod '%s/%s'\n", hours, minutes, seconds, mod_dir, dir->d_name);
                         load_mod(tmp, offset, f_arc);
                         current_time(&hours, &minutes, &seconds);
-                        SaltySD_printf("[%02d:%02d:%02d] SaltySD Mod Installer: Installed mod '%s' into arc\n", hours, minutes, seconds, tmp);
+                        SaltySD_printf("[%02d:%02d:%02d] Installed mod '%s' into arc\n", hours, minutes, seconds, tmp);
                     }
                 } else {
-                    SaltySD_printf("SaltySD Mod Installer: Found file '%s', offset not parsable\n", dir->d_name);
+                    SaltySD_printf("Found file '%s', offset not parsable\n", dir->d_name);
                 }
-            } else {
-                // TODO: use stat() to check if dir rather than by file path
-                snprintf(tmp, FILENAME_SIZE, "%s/%s", mod_dir, dir->d_name);
-                load_mods(f_arc, tmp);
             }
         }
         SaltySDCore_closedir(d);
     } else {
-        SaltySD_printf("SaltySD Mod Installer: Failed to open mod directory\n");
+        SaltySD_printf("Failed to open mod directory '%s'\n", mod_dir);
     }
 
     free(tmp);
+    free(mod_dir);
     return 0;
 }
 
 int main(int argc, char *argv[])
 {
-    SaltySD_printf("Mod installer: alive\n");
+    SaltySD_printf("BEGIN: SALTYSD MOD INSTALLER\n\n");
 
     FILE* f_arc = SaltySDCore_fopen("sdmc:/atmosphere/titles/01006A800016E000/romfs/data.arc", "r+b");
     if(!f_arc){
-        SaltySD_printf("SaltySD Mod Installer: Failed to get file handle to data.arc\n");
-        return 0;
+        SaltySD_printf("Failed to get file handle to data.arc\n");
+        goto end;
     }
 
     // restore backups -> delete backups -> make backups for current mods -> install current mods
-    load_mods(f_arc, "backups");
-    load_mods(f_arc, "mods");
+    SaltySD_printf("Installing backups...\n\n");
+    add_mod_dir("backups");
+    load_mods(f_arc);
+    
+    SaltySD_printf("Installing mods...\n\n");
+    add_mod_dir("mods");
+    while (num_mod_dirs > 0) {
+        load_mods(f_arc);
+    }
+
+    free(mod_dirs);
 
     SaltySDCore_fclose(f_arc);
 
+end:
+    SaltySD_printf("END: SALTYSD MOD INSTALLER\n\n");
     __libnx_exit(0);
 }
